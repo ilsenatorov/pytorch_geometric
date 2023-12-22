@@ -349,7 +349,7 @@ class SQLiteDatabase(Database):
         return [self._deserialize(data) for data in data_list]
 
     def __len__(self) -> int:
-        query = f"SELECT max(rowid) FROM FoldSeekDataset;"
+        query = f"SELECT max(rowid) FROM {self.name}"
         self.cursor.execute(query)
         return self.cursor.fetchone()[0]
 

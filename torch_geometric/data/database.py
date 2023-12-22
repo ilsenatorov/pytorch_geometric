@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
-from uuid import uuid4
 
 import torch
 from torch import Tensor
@@ -24,9 +23,9 @@ def maybe_cast_to_tensor_info(value: Any) -> Union[Any, TensorInfo]:
         return value
     if len(value) < 1 or len(value) > 2:
         return value
-    if len(value) == 1 and 'dtype' not in value:
+    if len(value) == 1 and "dtype" not in value:
         return value
-    if len(value) == 2 and 'dtype' not in value and 'size' not in value:
+    if len(value) == 2 and "dtype" not in value and "size" not in value:
         return value
     return TensorInfo.cast(value)
 
@@ -138,7 +137,7 @@ class Database(ABC):
         batch_size = length if batch_size is None else batch_size
 
         if log and length > batch_size:
-            desc = f'Insert {length} entries'
+            desc = f"Insert {length} entries"
             offsets = tqdm(range(0, length, batch_size), desc=desc)
         else:
             offsets = range(0, length, batch_size)
@@ -225,7 +224,6 @@ class Database(ABC):
         self,
         key: Union[int, Iterable[int], Tensor, slice, range],
     ) -> Union[Any, List[Any]]:
-
         if isinstance(key, int):
             return self.get(key)
         else:
@@ -243,9 +241,9 @@ class Database(ABC):
 
     def __repr__(self) -> str:
         try:
-            return f'{self.__class__.__name__}({len(self)})'
+            return f"{self.__class__.__name__}({len(self)})"
         except NotImplementedError:
-            return f'{self.__class__.__name__}()'
+            return f"{self.__class__.__name__}()"
 
 
 class SQLiteDatabase(Database):
@@ -269,7 +267,7 @@ class SQLiteDatabase(Database):
     def __init__(self, path: str, name: str, schema: Schema = object):
         super().__init__(schema)
 
-        warnings.filterwarnings('ignore', '.*given buffer is not writable.*')
+        warnings.filterwarnings("ignore", ".*given buffer is not writable.*")
 
         import sqlite3
 
@@ -283,18 +281,21 @@ class SQLiteDatabase(Database):
 
         # Create the table (if it does not exist) by mapping the Python schema
         # to the corresponding SQL schema:
-        sql_schema = ',\n'.join([
-            f'  {col_name} {self._to_sql_type(type_info)}' for col_name,
+        sql_schema = ",\n".join([
+            f"  {col_name} {self._to_sql_type(type_info)}" for col_name,
             type_info in zip(self._col_names, self.schema.values())
         ])
-        query = (f'CREATE TABLE IF NOT EXISTS {self.name} (\n'
-                 f'  id INTEGER PRIMARY KEY,\n'
-                 f'{sql_schema}\n'
-                 f')')
+        query = (f"CREATE TABLE IF NOT EXISTS {self.name} (\n"
+                 f"  id INTEGER PRIMARY KEY,\n"
+                 f"{sql_schema}\n"
+                 f")")
+        self.cursor.execute(query)
+        query = f"CREATE INDEX IF NOT EXISTS idx_id ON {self.name}(id)"
         self.cursor.execute(query)
 
     def connect(self):
         import sqlite3
+
         self._connection = sqlite3.connect(self.path)
         self._cursor = self._connection.cursor()
 
@@ -312,9 +313,9 @@ class SQLiteDatabase(Database):
         return self._cursor
 
     def insert(self, index: int, data: Any):
-        query = (f'INSERT INTO {self.name} '
-                 f'(id, {self._joined_col_names}) '
-                 f'VALUES (?, {self._dummies})')
+        query = (f"INSERT INTO {self.name} "
+                 f"(id, {self._joined_col_names}) "
+                 f"VALUES (?, {self._dummies})")
         self.cursor.execute(query, (index, *self._serialize(data)))
         self._connection.commit()
 
@@ -329,15 +330,15 @@ class SQLiteDatabase(Database):
         data_list = [(index, *self._serialize(data))
                      for index, data in zip(indices, data_list)]
 
-        query = (f'INSERT INTO {self.name} '
-                 f'(id, {self._joined_col_names}) '
-                 f'VALUES (?, {self._dummies})')
+        query = (f"INSERT INTO {self.name} "
+                 f"(id, {self._joined_col_names}) "
+                 f"VALUES (?, {self._dummies})")
         self.cursor.executemany(query, data_list)
         self._connection.commit()
 
     def get(self, index: int) -> Any:
-        query = (f'SELECT {self._joined_col_names} FROM {self.name} '
-                 f'WHERE id = ?')
+        query = (f"SELECT {self._joined_col_names} FROM {self.name} "
+                 f"WHERE id = ?")
         self.cursor.execute(query, (index, ))
         return self._deserialize(self.cursor.fetchone())
 
@@ -346,50 +347,20 @@ class SQLiteDatabase(Database):
         indices: Union[Iterable[int], Tensor, slice, range],
         batch_size: Optional[int] = None,
     ) -> List[Any]:
-
         if isinstance(indices, slice):
             indices = self.slice_to_range(indices)
         elif isinstance(indices, Tensor):
             indices = indices.tolist()
 
-        # We create a temporary ID table to then perform an INNER JOIN.
-        # This avoids having a long IN clause and guarantees sorted outputs:
-        join_table_name = f'{self.name}__join__{uuid4().hex}'
-        query = (f'CREATE TABLE {join_table_name} (\n'
-                 f'  id INTEGER,\n'
-                 f'  row_id INTEGER\n'
-                 f')')
+        query = (f"SELECT {self._joined_col_names} FROM {self.name}"
+                 f"WHERE id IN ({','.join([str(x) for x in indices])})")
         self.cursor.execute(query)
 
-        query = f'INSERT INTO {join_table_name} (id, row_id) VALUES (?, ?)'
-        self.cursor.executemany(query, zip(indices, range(len(indices))))
-
-        query = f'SELECT * FROM {join_table_name}'
-        self.cursor.execute(query)
-
-        query = (f'SELECT {self._joined_col_names} '
-                 f'FROM {self.name} INNER JOIN {join_table_name} '
-                 f'ON {self.name}.id = {join_table_name}.id '
-                 f'ORDER BY {join_table_name}.row_id')
-        self.cursor.execute(query)
-
-        if batch_size is None:
-            data_list = self.cursor.fetchall()
-        else:
-            data_list: List[Any] = []
-            while True:
-                chunk_list = self.cursor.fetchmany(size=batch_size)
-                if len(chunk_list) == 0:
-                    break
-                data_list.extend(chunk_list)
-
-        query = f'DROP TABLE {join_table_name}'
-        self.cursor.execute(query)
-
+        data_list = self.cursor.fetchall()
         return [self._deserialize(data) for data in data_list]
 
     def __len__(self) -> int:
-        query = f'SELECT COUNT(*) FROM {self.name}'
+        query = f"SELECT COUNT(*) FROM {self.name}"
         self.cursor.execute(query)
         return self.cursor.fetchone()[0]
 
@@ -397,25 +368,25 @@ class SQLiteDatabase(Database):
 
     @cached_property
     def _col_names(self) -> List[str]:
-        return [f'COL_{key}' for key in self.schema.keys()]
+        return [f"COL_{key}" for key in self.schema.keys()]
 
     @cached_property
     def _joined_col_names(self) -> str:
-        return ', '.join(self._col_names)
+        return ", ".join(self._col_names)
 
     @cached_property
     def _dummies(self) -> str:
-        return ', '.join(['?'] * len(self.schema.keys()))
+        return ", ".join(["?"] * len(self.schema.keys()))
 
     def _to_sql_type(self, type_info: Any) -> str:
         if type_info == int:
-            return 'INTEGER NOT NULL'
+            return "INTEGER NOT NULL"
         if type_info == float:
-            return 'FLOAT'
+            return "FLOAT"
         if type_info == str:
-            return 'TEXT NOT NULL'
+            return "TEXT NOT NULL"
         else:
-            return 'BLOB NOT NULL'
+            return "BLOB NOT NULL"
 
     def _serialize(self, row: Any) -> List[Any]:
         # Serializes the given input data according to `schema`:
@@ -456,7 +427,7 @@ class SQLiteDatabase(Database):
                     tensor = torch.empty(0, dtype=col_schema.dtype)
                 out_dict[key] = tensor.view(*col_schema.size)
             elif col_schema == float:
-                out_dict[key] = value if value is not None else float('NaN')
+                out_dict[key] = value if value is not None else float("NaN")
             elif col_schema in {int, str}:
                 out_dict[key] = value
             else:
@@ -507,6 +478,7 @@ class RocksDatabase(Database):
 
     def connect(self):
         import rocksdict
+
         self._db = rocksdict.Rdict(
             self.path,
             options=rocksdict.Options(raw_mode=True),
@@ -525,7 +497,7 @@ class RocksDatabase(Database):
 
     @staticmethod
     def to_key(index: int) -> bytes:
-        return index.to_bytes(8, byteorder='big', signed=True)
+        return index.to_bytes(8, byteorder="big", signed=True)
 
     def insert(self, index: int, data: Any):
         self.db[self.to_key(index)] = self._serialize(data)

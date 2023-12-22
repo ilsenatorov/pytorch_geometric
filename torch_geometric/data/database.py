@@ -352,7 +352,7 @@ class SQLiteDatabase(Database):
         elif isinstance(indices, Tensor):
             indices = indices.tolist()
 
-        query = (f"SELECT {self._joined_col_names} FROM {self.name}"
+        query = (f"SELECT {self._joined_col_names} FROM {self.name} "
                  f"WHERE id IN ({','.join([str(x) for x in indices])})")
         self.cursor.execute(query)
 

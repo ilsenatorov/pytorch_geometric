@@ -15,7 +15,7 @@ from torch_geometric.utils.mixin import CastMixin
 @dataclass
 class TensorInfo(CastMixin):
     dtype: torch.dtype
-    size: Tuple[int, ...] = field(default_factory=lambda: (-1, ))
+    size: Tuple[int, ...] = field(default_factory=lambda: (-1,))
 
 
 def maybe_cast_to_tensor_info(value: Any) -> Union[Any, TensorInfo]:
@@ -81,13 +81,11 @@ class Database(ABC):
             database will use python pickling for serializing and
             deserializing. (default: :obj:`object`)
     """
+
     def __init__(self, schema: Schema = object):
         schema = maybe_cast_to_tensor_info(schema)
         schema = self._to_dict(schema)
-        schema = {
-            key: maybe_cast_to_tensor_info(value)
-            for key, value in schema.items()
-        }
+        schema = {key: maybe_cast_to_tensor_info(value) for key, value in schema.items()}
 
         self.schema: Dict[Union[str, int], Any] = schema
 
@@ -144,8 +142,8 @@ class Database(ABC):
 
         for start in offsets:
             self._multi_insert(
-                indices[start:start + batch_size],
-                data_list[start:start + batch_size],
+                indices[start : start + batch_size],
+                data_list[start : start + batch_size],
             )
 
     def _multi_insert(
@@ -188,7 +186,7 @@ class Database(ABC):
 
         data_list: List[Any] = []
         for start in range(0, length, batch_size):
-            chunk_indices = indices[start:start + batch_size]
+            chunk_indices = indices[start : start + batch_size]
             data_list.extend(self._multi_get(chunk_indices))
         return data_list
 
@@ -264,6 +262,7 @@ class SQLiteDatabase(Database):
             database will use python pickling for serializing and
             deserializing. (default: :obj:`object`)
     """
+
     def __init__(self, path: str, name: str, schema: Schema = object):
         super().__init__(schema)
 
@@ -281,16 +280,13 @@ class SQLiteDatabase(Database):
 
         # Create the table (if it does not exist) by mapping the Python schema
         # to the corresponding SQL schema:
-        sql_schema = ",\n".join([
-            f"  {col_name} {self._to_sql_type(type_info)}" for col_name,
-            type_info in zip(self._col_names, self.schema.values())
-        ])
-        query = (f"CREATE TABLE IF NOT EXISTS {self.name} (\n"
-                 f"  id INTEGER PRIMARY KEY,\n"
-                 f"{sql_schema}\n"
-                 f")")
-        self.cursor.execute(query)
-        query = f"CREATE INDEX IF NOT EXISTS idx_id ON {self.name}(id)"
+        sql_schema = ",\n".join(
+            [
+                f"  {col_name} {self._to_sql_type(type_info)}"
+                for col_name, type_info in zip(self._col_names, self.schema.values())
+            ]
+        )
+        query = f"CREATE TABLE IF NOT EXISTS {self.name} (\n" f"  id INTEGER PRIMARY KEY,\n" f"{sql_schema}\n" f")"
         self.cursor.execute(query)
 
     def connect(self):
@@ -313,9 +309,7 @@ class SQLiteDatabase(Database):
         return self._cursor
 
     def insert(self, index: int, data: Any):
-        query = (f"INSERT INTO {self.name} "
-                 f"(id, {self._joined_col_names}) "
-                 f"VALUES (?, {self._dummies})")
+        query = f"INSERT INTO {self.name} " f"(id, {self._joined_col_names}) " f"VALUES (?, {self._dummies})"
         self.cursor.execute(query, (index, *self._serialize(data)))
         self._connection.commit()
 
@@ -327,19 +321,15 @@ class SQLiteDatabase(Database):
         if isinstance(indices, Tensor):
             indices = indices.tolist()
 
-        data_list = [(index, *self._serialize(data))
-                     for index, data in zip(indices, data_list)]
+        data_list = [(index, *self._serialize(data)) for index, data in zip(indices, data_list)]
 
-        query = (f"INSERT INTO {self.name} "
-                 f"(id, {self._joined_col_names}) "
-                 f"VALUES (?, {self._dummies})")
+        query = f"INSERT INTO {self.name} " f"(id, {self._joined_col_names}) " f"VALUES (?, {self._dummies})"
         self.cursor.executemany(query, data_list)
         self._connection.commit()
 
     def get(self, index: int) -> Any:
-        query = (f"SELECT {self._joined_col_names} FROM {self.name} "
-                 f"WHERE id = ?")
-        self.cursor.execute(query, (index, ))
+        query = f"SELECT {self._joined_col_names} FROM {self.name} " f"WHERE id = ?"
+        self.cursor.execute(query, (index,))
         return self._deserialize(self.cursor.fetchone())
 
     def multi_get(
@@ -352,15 +342,14 @@ class SQLiteDatabase(Database):
         elif isinstance(indices, Tensor):
             indices = indices.tolist()
 
-        query = (f"SELECT {self._joined_col_names} FROM {self.name} "
-                 f"WHERE id IN ({','.join([str(x) for x in indices])})")
+        query = f"SELECT {self._joined_col_names} FROM {self.name} " f"WHERE id IN ({','.join([str(x) for x in indices])})"
         self.cursor.execute(query)
 
         data_list = self.cursor.fetchall()
         return [self._deserialize(data) for data in data_list]
 
     def __len__(self) -> int:
-        query = f"SELECT COUNT(*) FROM {self.name}"
+        query = f"SELECT max(rowid) FROM FoldSeekDataset;"
         self.cursor.execute(query)
         return self.cursor.fetchone()[0]
 
@@ -465,6 +454,7 @@ class RocksDatabase(Database):
             database will use python pickling for serializing and
             deserializing. (default: :obj:`object`)
     """
+
     def __init__(self, path: str, schema: Schema = object):
         super().__init__(schema)
 

@@ -349,12 +349,9 @@ class SQLiteDatabase(Database):
         return [self._deserialize(data) for data in data_list]
 
     def __len__(self) -> int:
-        query = f"SELECT max(rowid) FROM {self.name}"
+        query = f"SELECT COUNT(id) FROM {self.name}"
         self.cursor.execute(query)
-        n = self.cursor.fetchone()[0]
-        if n is None:
-            return 0
-        return n
+        return self.cursor.fetchone()[0]
 
     # Helper functions ########################################################
 

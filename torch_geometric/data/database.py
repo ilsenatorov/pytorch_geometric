@@ -351,7 +351,10 @@ class SQLiteDatabase(Database):
     def __len__(self) -> int:
         query = f"SELECT max(rowid) FROM {self.name}"
         self.cursor.execute(query)
-        return self.cursor.fetchone()[0]
+        n = self.cursor.fetchone()[0]
+        if n is None:
+            return 0
+        return n
 
     # Helper functions ########################################################
 

@@ -5,7 +5,7 @@ import torch
 from torch_geometric.data import Dataset
 
 
-class DynamicBatchSampler(torch.utils.data.sampler.Sampler):
+class DynamicBatchSampler(torch.utils.data.BatchSampler):
     r"""Dynamically adds samples to a mini-batch up to a maximum size (either
     based on number of nodes or number of edges). When data samples have a
     wide range in sizes, specifying a mini-batch size in terms of number of
@@ -42,32 +42,29 @@ class DynamicBatchSampler(torch.utils.data.sampler.Sampler):
     def __init__(
         self,
         dataset: Dataset,
+        sampler: torch.utils.data.Sampler,
         max_num: int,
-        mode: str = 'node',
-        shuffle: bool = False,
+        mode: str = "node",
         skip_too_big: bool = False,
         num_steps: Optional[int] = None,
     ):
         if max_num <= 0:
             raise ValueError(f"`max_num` should be a positive integer value "
                              f"(got {max_num})")
-        if mode not in ['node', 'edge']:
+        if mode not in ["node", "edge"]:
             raise ValueError(f"`mode` choice should be either "
                              f"'node' or 'edge' (got '{mode}')")
 
         self.dataset = dataset
+        self.sampler = sampler
         self.max_num = max_num
         self.mode = mode
-        self.shuffle = shuffle
         self.skip_too_big = skip_too_big
         self.num_steps = num_steps
         self.max_steps = num_steps or len(dataset)
 
     def __iter__(self) -> Iterator[List[int]]:
-        if self.shuffle:
-            indices = torch.randperm(len(self.dataset)).tolist()
-        else:
-            indices = range(len(self.dataset))
+        indices = list(self.sampler)
 
         samples: List[int] = []
         current_num: int = 0
@@ -76,11 +73,10 @@ class DynamicBatchSampler(torch.utils.data.sampler.Sampler):
 
         while (num_processed < len(self.dataset)
                and num_steps < self.max_steps):
-
             for i in indices[num_processed:]:
                 data = self.dataset[i]
-                num = data.num_nodes if self.mode == 'node' else data.num_edges
-
+                num = (data.num_nodes
+                       if self.mode == "node" else data.num_edges)
                 if current_num + num > self.max_num:
                     if current_num == 0:
                         if self.skip_too_big:
@@ -88,10 +84,9 @@ class DynamicBatchSampler(torch.utils.data.sampler.Sampler):
                     else:  # Mini-batch filled:
                         break
 
-                samples.append(i)
+                    samples.append(i)
                 num_processed += 1
                 current_num += num
-
             yield samples
             samples: List[int] = []
             current_num = 0
